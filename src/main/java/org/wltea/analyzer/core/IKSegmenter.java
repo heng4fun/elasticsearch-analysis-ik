@@ -1,7 +1,7 @@
 /**
  * IK 中文分词  版本 5.0
  * IK Analyzer release 5.0
- * 
+ *
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,10 +23,11 @@
  */
 package org.wltea.analyzer.core;
 
-import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.env.Environment;
 import org.wltea.analyzer.cfg.Configuration;
 import org.wltea.analyzer.dic.Dictionary;
+
+import com.hichao.settings.SettingKeys;
+import com.hichao.settings.Settings;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -38,7 +39,7 @@ import java.util.List;
  *
  */
 public final class IKSegmenter {
-	
+
 	//字符窜reader
 	private Reader input;
 	//分词器配置项
@@ -50,35 +51,19 @@ public final class IKSegmenter {
 	//分词歧义裁决器
 	private IKArbitrator arbitrator;
     private  boolean useSmart = false;
-	
+
 
 	/**
 	 * IK分词器构造函数
 	 * @param input
      */
-	public IKSegmenter(Reader input , Settings settings, Environment environment){
+	public IKSegmenter(Reader input , Settings settings){
 		this.input = input;
-		this.cfg = new Configuration(environment);
-        this.useSmart = settings.get("use_smart", "false").equals("true");
+		this.cfg = new Configuration(settings);
+        this.useSmart = settings.getAsBoolean(SettingKeys.ANALYSIS_IK_USESMART, false);;
         this.init();
 	}
-	
-	public IKSegmenter(Reader input){
-		new IKSegmenter(input, null,null);
-	}
-	
-//	/**
-//	 * IK分词器构造函数
-//	 * @param input
-//	 * @param cfg 使用自定义的Configuration构造分词器
-//	 *
-//	 */
-//	public IKSegmenter(Reader input , Configuration cfg){
-//		this.input = input;
-//		this.cfg = cfg;
-//		this.init();
-//	}
-	
+
 	/**
 	 * 初始化
 	 */
@@ -92,7 +77,7 @@ public final class IKSegmenter {
 		//加载歧义裁决器
 		this.arbitrator = new IKArbitrator();
 	}
-	
+
 	/**
 	 * 初始化词典，加载子分词器实现
 	 * @return List<ISegmenter>
@@ -100,14 +85,14 @@ public final class IKSegmenter {
 	private List<ISegmenter> loadSegmenters(){
 		List<ISegmenter> segmenters = new ArrayList<ISegmenter>(4);
 		//处理字母的子分词器
-		segmenters.add(new LetterSegmenter()); 
+		segmenters.add(new LetterSegmenter());
 		//处理中文数量词的子分词器
 		segmenters.add(new CN_QuantifierSegmenter());
 		//处理中文词的子分词器
 		segmenters.add(new CJKSegmenter());
 		return segmenters;
 	}
-	
+
 	/**
 	 * 分词，获取下一个词元
 	 * @return Lexeme 词元对象
@@ -126,7 +111,7 @@ public final class IKSegmenter {
 				//reader已经读完
 				context.reset();
 				return null;
-				
+
 			}else{
 				//初始化指针
 				context.initCursor();
@@ -151,7 +136,7 @@ public final class IKSegmenter {
 			//将分词结果输出到结果集，并处理未切分的单个CJK字符
 			context.outputToResult();
 			//记录本次分词的缓冲区位移
-			context.markBufferOffset();			
+			context.markBufferOffset();
 		}
 		return l;
 	}

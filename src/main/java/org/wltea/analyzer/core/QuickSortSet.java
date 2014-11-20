@@ -1,7 +1,7 @@
 /**
  * IK 中文分词  版本 5.0
  * IK Analyzer release 5.0
- * 
+ *
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,7 +20,7 @@
  * 源代码由林良益(linliangyi2005@gmail.com)提供
  * 版权声明 2012，乌龙茶工作室
  * provided by Linliangyi and copyright 2012 by Oolong studio
- * 
+ *
  */
 package org.wltea.analyzer.core;
 
@@ -34,42 +34,42 @@ class QuickSortSet {
 	private Cell tail;
 	//链表的实际大小
 	private int size;
-	
+
 	QuickSortSet(){
 		this.size = 0;
 	}
-	
+
 	/**
 	 * 向链表集合添加词元
 	 * @param lexeme
 	 */
 	boolean addLexeme(Lexeme lexeme){
-		Cell newCell = new Cell(lexeme); 
+		Cell newCell = new Cell(lexeme);
 		if(this.size == 0){
 			this.head = newCell;
 			this.tail = newCell;
 			this.size++;
 			return true;
-			
+
 		}else{
 			if(this.tail.compareTo(newCell) == 0){//词元与尾部词元相同，不放入集合
 				return false;
-				
+
 			}else if(this.tail.compareTo(newCell) < 0){//词元接入链表尾部
 				this.tail.next = newCell;
 				newCell.prev = this.tail;
 				this.tail = newCell;
 				this.size++;
 				return true;
-				
+
 			}else if(this.head.compareTo(newCell) > 0){//词元接入链表头部
 				this.head.prev = newCell;
 				newCell.next = this.head;
 				this.head = newCell;
 				this.size++;
 				return true;
-				
-			}else{					
+
+			}else{
 				//从尾部上逆
 				Cell index = this.tail;
 				while(index != null && index.compareTo(newCell) > 0){
@@ -77,20 +77,20 @@ class QuickSortSet {
 				}
 				if(index.compareTo(newCell) == 0){//词元与集合中的词元重复，不放入集合
 					return false;
-					
+
 				}else if(index.compareTo(newCell) < 0){//词元插入链表中的某个位置
 					newCell.prev = index;
 					newCell.next = index.next;
 					index.next.prev = newCell;
 					index.next = newCell;
 					this.size++;
-					return true;					
+					return true;
 				}
 			}
 		}
 		return false;
 	}
-	
+
 	/**
 	 * 返回链表头部元素
 	 * @return
@@ -101,7 +101,7 @@ class QuickSortSet {
 		}
 		return null;
 	}
-	
+
 	/**
 	 * 取出链表集合的第一个元素
 	 * @return Lexeme
@@ -122,7 +122,7 @@ class QuickSortSet {
 			return null;
 		}
 	}
-	
+
 	/**
 	 * 返回链表尾部元素
 	 * @return
@@ -133,7 +133,7 @@ class QuickSortSet {
 		}
 		return null;
 	}
-	
+
 	/**
 	 * 取出链表集合的最后一个元素
 	 * @return Lexeme
@@ -145,18 +145,18 @@ class QuickSortSet {
 			this.tail = null;
 			this.size--;
 			return last;
-			
+
 		}else if(this.size > 1){
 			Lexeme last = this.tail.lexeme;
 			this.tail = this.tail.prev;
 			this.size--;
 			return last;
-			
+
 		}else{
 			return null;
 		}
 	}
-	
+
 	/**
 	 * 返回集合大小
 	 * @return
@@ -164,7 +164,7 @@ class QuickSortSet {
 	int size(){
 		return this.size;
 	}
-	
+
 	/**
 	 * 判断集合是否为空
 	 * @return
@@ -172,7 +172,7 @@ class QuickSortSet {
 	boolean isEmpty(){
 		return this.size == 0;
 	}
-	
+
 	/**
 	 * 返回lexeme链的头部
 	 * @return
@@ -180,12 +180,12 @@ class QuickSortSet {
 	Cell getHead(){
 		return this.head;
 	}
-	
+
 	/**
-	 * 
+	 *
 	 * IK 中文分词  版本 5.0
 	 * IK Analyzer release 5.0
-	 * 
+	 *
 	 * Licensed to the Apache Software Foundation (ASF) under one or more
 	 * contributor license agreements.  See the NOTICE file distributed with
 	 * this work for additional information regarding copyright ownership.
@@ -204,15 +204,15 @@ class QuickSortSet {
 	 * 源代码由林良益(linliangyi2005@gmail.com)提供
 	 * 版权声明 2012，乌龙茶工作室
 	 * provided by Linliangyi and copyright 2012 by Oolong studio
-	 * 
+	 *
 	 * QuickSortSet集合单元
-	 * 
+	 *
 	 */
 	class Cell implements Comparable<Cell>{
 		private Cell prev;
 		private Cell next;
 		private Lexeme lexeme;
-		
+
 		Cell(Lexeme lexeme){
 			if(lexeme == null){
 				throw new IllegalArgumentException("lexeme must not be null");
@@ -227,11 +227,11 @@ class QuickSortSet {
 		public Cell getPrev(){
 			return this.prev;
 		}
-		
+
 		public Cell getNext(){
 			return this.next;
 		}
-		
+
 		public Lexeme getLexeme(){
 			return this.lexeme;
 		}

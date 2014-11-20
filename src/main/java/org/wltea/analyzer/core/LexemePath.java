@@ -1,7 +1,7 @@
 /**
  * IK 中文分词  版本 5.0
  * IK Analyzer release 5.0
- * 
+ *
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,7 +20,7 @@
  * 源代码由林良益(linliangyi2005@gmail.com)提供
  * 版权声明 2012，乌龙茶工作室
  * provided by Linliangyi and copyright 2012 by Oolong studio
- * 
+ *
  */
 package org.wltea.analyzer.core;
 
@@ -29,14 +29,14 @@ package org.wltea.analyzer.core;
  * Lexeme链（路径）
  */
 class LexemePath extends QuickSortSet implements Comparable<LexemePath>{
-	
+
 	//起始位置
 	private int pathBegin;
 	//结束
 	private int pathEnd;
 	//词元链的有效字符长度
 	private int payloadLength;
-	
+
 	LexemePath(){
 		this.pathBegin = -1;
 		this.pathEnd = -1;
@@ -46,7 +46,7 @@ class LexemePath extends QuickSortSet implements Comparable<LexemePath>{
 	/**
 	 * 向LexemePath追加相交的Lexeme
 	 * @param lexeme
-	 * @return 
+	 * @return
 	 */
 	boolean addCrossLexeme(Lexeme lexeme){
 		if(this.isEmpty()){
@@ -55,7 +55,7 @@ class LexemePath extends QuickSortSet implements Comparable<LexemePath>{
 			this.pathEnd = lexeme.getBegin() + lexeme.getLength();
 			this.payloadLength += lexeme.getLength();
 			return true;
-			
+
 		}else if(this.checkCross(lexeme)){
 			this.addLexeme(lexeme);
 			if(lexeme.getBegin() + lexeme.getLength() > this.pathEnd){
@@ -63,17 +63,17 @@ class LexemePath extends QuickSortSet implements Comparable<LexemePath>{
 			}
 			this.payloadLength = this.pathEnd - this.pathBegin;
 			return true;
-			
+
 		}else{
 			return  false;
-			
+
 		}
 	}
-	
+
 	/**
 	 * 向LexemePath追加不相交的Lexeme
 	 * @param lexeme
-	 * @return 
+	 * @return
 	 */
 	boolean addNotCrossLexeme(Lexeme lexeme){
 		if(this.isEmpty()){
@@ -82,10 +82,10 @@ class LexemePath extends QuickSortSet implements Comparable<LexemePath>{
 			this.pathEnd = lexeme.getBegin() + lexeme.getLength();
 			this.payloadLength += lexeme.getLength();
 			return true;
-			
+
 		}else if(this.checkCross(lexeme)){
 			return  false;
-			
+
 		}else{
 			this.addLexeme(lexeme);
 			this.payloadLength += lexeme.getLength();
@@ -94,10 +94,10 @@ class LexemePath extends QuickSortSet implements Comparable<LexemePath>{
 			Lexeme tail = this.peekLast();
 			this.pathEnd = tail.getBegin() + tail.getLength();
 			return true;
-			
+
 		}
 	}
-	
+
 	/**
 	 * 移除尾部的Lexeme
 	 * @return
@@ -107,15 +107,15 @@ class LexemePath extends QuickSortSet implements Comparable<LexemePath>{
 		if(this.isEmpty()){
 			this.pathBegin = -1;
 			this.pathEnd = -1;
-			this.payloadLength = 0;			
-		}else{		
+			this.payloadLength = 0;
+		}else{
 			this.payloadLength -= tail.getLength();
 			Lexeme newTail = this.peekLast();
 			this.pathEnd = newTail.getBegin() + newTail.getLength();
 		}
 		return tail;
 	}
-	
+
 	/**
 	 * 检测词元位置交叉（有歧义的切分）
 	 * @param lexeme
@@ -125,7 +125,7 @@ class LexemePath extends QuickSortSet implements Comparable<LexemePath>{
 		return (lexeme.getBegin() >= this.pathBegin && lexeme.getBegin() < this.pathEnd)
 				|| (this.pathBegin >= lexeme.getBegin() && this.pathBegin < lexeme.getBegin()+ lexeme.getLength());
 	}
-	
+
 	int getPathBegin() {
 		return pathBegin;
 	}
@@ -141,7 +141,7 @@ class LexemePath extends QuickSortSet implements Comparable<LexemePath>{
 	int getPayloadLength(){
 		return this.payloadLength;
 	}
-	
+
 	/**
 	 * 获取LexemePath的路径长度
 	 * @return
@@ -149,7 +149,7 @@ class LexemePath extends QuickSortSet implements Comparable<LexemePath>{
 	int getPathLength(){
 		return this.pathEnd - this.pathBegin;
 	}
-	
+
 
 	/**
 	 * X权重（词元长度积）
@@ -164,7 +164,7 @@ class LexemePath extends QuickSortSet implements Comparable<LexemePath>{
 		}
 		return product;
 	}
-	
+
 	/**
 	 * 词元位置权重
 	 * @return
@@ -178,9 +178,9 @@ class LexemePath extends QuickSortSet implements Comparable<LexemePath>{
 			pWeight += p * c.getLexeme().getLength() ;
 			c = c.getNext();
 		}
-		return pWeight;		
+		return pWeight;
 	}
-	
+
 	LexemePath copy(){
 		LexemePath theCopy = new LexemePath();
 		theCopy.pathBegin = this.pathBegin;
@@ -231,7 +231,7 @@ class LexemePath extends QuickSortSet implements Comparable<LexemePath>{
 							}else if(this.getPWeight() < o.getPWeight()){
 								return 1;
 							}
-							
+
 						}
 					}
 				}
@@ -239,7 +239,7 @@ class LexemePath extends QuickSortSet implements Comparable<LexemePath>{
 		}
 		return 0;
 	}
-	
+
 	public String toString(){
 		StringBuffer sb = new StringBuffer();
 		sb.append("pathBegin  : ").append(pathBegin).append("\r\n");

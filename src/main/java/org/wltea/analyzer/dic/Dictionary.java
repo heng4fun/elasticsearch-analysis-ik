@@ -1,7 +1,8 @@
 /**
+ *
  * IK 中文分词  版本 5.0
  * IK Analyzer release 5.0
- * 
+ *
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,613 +21,310 @@
  * 源代码由林良益(linliangyi2005@gmail.com)提供
  * 版权声明 2012，乌龙茶工作室
  * provided by Linliangyi and copyright 2012 by Oolong studio
- * 
- * 
+ *
  */
 package org.wltea.analyzer.dic;
 
-import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.config.RequestConfig;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
-import org.elasticsearch.common.logging.ESLogger;
-import org.elasticsearch.common.logging.Loggers;
-import org.wltea.analyzer.cfg.Configuration;
-
-import java.io.*;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
+import java.util.Arrays;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 词典管理类,单子模式
+ * 词典树分段，表示词典树的一个分枝
  */
-public class Dictionary {
+class DictSegment implements Comparable<DictSegment>{
+
+    //公用字典表，存储汉字
+    private static final Map<Character , Character> charMap = new ConcurrentHashMap<Character , Character>(16 , 0.95f);
+    //数组大小上限
+    private static final int ARRAY_LENGTH_LIMIT = 3;
 
 
-	/*
-	 * 词典单子实例
-	 */
-	private static Dictionary singleton;
+    //Map存储结构
+    private Map<Character , DictSegment> childrenMap;
+    //数组方式存储结构
+    private DictSegment[] childrenArray;
 
-    private DictSegment _MainDict;
 
-    private DictSegment _SurnameDict;
+    //当前节点上存储的字符
+    private Character nodeChar;
+    //当前节点存储的Segment数目
+    //storeSize <=ARRAY_LENGTH_LIMIT ，使用数组存储， storeSize >ARRAY_LENGTH_LIMIT ,则使用Map存储
+    private int storeSize = 0;
+    //当前DictSegment状态 ,默认 0 , 1表示从根节点到当前节点的路径表示一个词
+    private int nodeState = 0;
 
-    private DictSegment _QuantifierDict;
 
-    private DictSegment _SuffixDict;
-
-    private DictSegment _PrepDict;
-
-    private DictSegment _StopWords;
-
-	
-	/**
-	 * 配置对象
-	 */
-	private Configuration configuration;
-    private ESLogger logger=null;
-    public static final String PATH_DIC_MAIN = "ik/main.dic";
-    public static final String PATH_DIC_SURNAME = "ik/surname.dic";
-    public static final String PATH_DIC_QUANTIFIER = "ik/quantifier.dic";
-    public static final String PATH_DIC_SUFFIX = "ik/suffix.dic";
-    public static final String PATH_DIC_PREP = "ik/preposition.dic";
-    public static final String PATH_DIC_STOP = "ik/stopword.dic";
-    private Dictionary(){
-        logger = Loggers.getLogger("ik-analyzer");
+    DictSegment(Character nodeChar){
+        if(nodeChar == null){
+            throw new IllegalArgumentException("参数为空异常，字符不能为空");
+        }
+        this.nodeChar = nodeChar;
     }
 
-	/**
-	 * 词典初始化
-	 * 由于IK Analyzer的词典采用Dictionary类的静态方法进行词典初始化
-	 * 只有当Dictionary类被实际调用时，才会开始载入词典，
-	 * 这将延长首次分词操作的时间
-	 * 该方法提供了一个在应用加载阶段就初始化字典的手段
-	 * @return Dictionary
-	 */
-	public static synchronized Dictionary initial(Configuration cfg){
-		if(singleton == null){
-			synchronized(Dictionary.class){
-				if(singleton == null){
-					singleton = new Dictionary();
-                    singleton.configuration=cfg;
-                    singleton.loadMainDict();
-                    singleton.loadSurnameDict();
-                    singleton.loadQuantifierDict();
-                    singleton.loadSuffixDict();
-                    singleton.loadPrepDict();
-                    singleton.loadStopWordDict();
-                    
-                  //建立监控线程
-                    for(String location:cfg.getRemoteExtDictionarys()){
-                        Thread monitor = new Thread(new Monitor(location));
-                	monitor.start();
-                    }
-                    for(String location:cfg.getRemoteExtStopWordDictionarys()){
-                        Thread monitor = new Thread(new Monitor(location));
-                	monitor.start();
-                    }
-                    
-                    return singleton;
-				}
-			}
-		}
-		return singleton;
-	}
-	
-	/**
-	 * 获取词典单子实例
-	 * @return Dictionary 单例对象
-	 */
-	public static Dictionary getSingleton(){
-		if(singleton == null){
-			throw new IllegalStateException("词典尚未初始化，请先调用initial方法");
-		}
-		return singleton;
-	}
-	
-	/**
-	 * 批量加载新词条
-	 * @param words Collection<String>词条列表
-	 */
-	public void addWords(Collection<String> words){
-		if(words != null){
-			for(String word : words){
-				if (word != null) {
-					//批量加载词条到主内存词典中
-					singleton._MainDict.fillSegment(word.trim().toCharArray());
-				}
-			}
-		}
-	}
-	
-	/**
-	 * 批量移除（屏蔽）词条
-	 */
-	public void disableWords(Collection<String> words){
-		if(words != null){
-			for(String word : words){
-				if (word != null) {
-					//批量屏蔽词条
-					singleton._MainDict.disableSegment(word.trim().toCharArray());
-				}
-			}
-		}
-	}
-	
-	/**
-	 * 检索匹配主词典
-	 * @return Hit 匹配结果描述
-	 */
-	public Hit matchInMainDict(char[] charArray){
-		return singleton._MainDict.match(charArray);
-	}
-	
-	/**
-	 * 检索匹配主词典
-	 * @return Hit 匹配结果描述
-	 */
-	public Hit matchInMainDict(char[] charArray , int begin, int length){
-        return singleton._MainDict.match(charArray, begin, length);
-	}
-	
-	/**
-	 * 检索匹配量词词典
-	 * @return Hit 匹配结果描述
-	 */
-	public Hit matchInQuantifierDict(char[] charArray , int begin, int length){
-		return singleton._QuantifierDict.match(charArray, begin, length);
-	}
-	
-	
-	/**
-	 * 从已匹配的Hit中直接取出DictSegment，继续向下匹配
-	 * @return Hit
-	 */
-	public Hit matchWithHit(char[] charArray , int currentIndex , Hit matchedHit){
-		DictSegment ds = matchedHit.getMatchedDictSegment();
-		return ds.match(charArray, currentIndex, 1 , matchedHit);
-	}
-	
-	
-	/**
-	 * 判断是否是停止词
-	 * @return boolean
-	 */
-	public boolean isStopWord(char[] charArray , int begin, int length){			
-		return singleton._StopWords.match(charArray, begin, length).isMatch();
-	}	
-	
-	/**
-	 * 加载主词典及扩展词典
-	 */
-	private void loadMainDict(){
-		//建立一个主词典实例
-		_MainDict = new DictSegment((char)0);
+    Character getNodeChar() {
+        return nodeChar;
+    }
 
-		//读取主词典文件
-        File file= new File(configuration.getDictRoot(), Dictionary.PATH_DIC_MAIN);
+    /*
+     * 判断是否有下一个节点
+     */
+    boolean hasNextNode(){
+        return  this.storeSize > 0;
+    }
 
-        InputStream is = null;
-        try {
-            is = new FileInputStream(file);
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
+    /**
+     * 匹配词段
+     * @param charArray
+     * @return Hit
+     */
+    Hit match(char[] charArray){
+        return this.match(charArray , 0 , charArray.length , null);
+    }
+
+    /**
+     * 匹配词段
+     * @param charArray
+     * @param begin
+     * @param length
+     * @return Hit
+     */
+    Hit match(char[] charArray , int begin , int length){
+        return this.match(charArray , begin , length , null);
+    }
+
+    /**
+     * 匹配词段
+     * @param charArray
+     * @param begin
+     * @param length
+     * @param searchHit
+     * @return Hit
+     */
+    Hit match(char[] charArray , int begin , int length , Hit searchHit){
+
+        if(searchHit == null){
+            //如果hit为空，新建
+            searchHit= new Hit();
+            //设置hit的其实文本位置
+            searchHit.setBegin(begin);
+        }else{
+            //否则要将HIT状态重置
+            searchHit.setUnmatch();
         }
-        
-		try {
-			BufferedReader br = new BufferedReader(new InputStreamReader(is , "UTF-8"), 512);
-			String theWord = null;
-			do {
-				theWord = br.readLine();
-				if (theWord != null && !"".equals(theWord.trim())) {
-					_MainDict.fillSegment(theWord.trim().toCharArray());
-				}
-			} while (theWord != null);
-			
-		} catch (IOException e) {
-            logger.error("ik-analyzer",e);
+        //设置hit的当前处理位置
+        searchHit.setEnd(begin);
 
-        }finally{
-			try {
-				if(is != null){
-                    is.close();
-                    is = null;
-				}
-			} catch (IOException e) {
-                logger.error("ik-analyzer",e);
-			}
-		}
-		//加载扩展词典
-		this.loadExtDict();
-		//加载远程自定义词库
-		this.loadRemoteExtDict();
-	}	
-	
-	/**
-	 * 加载用户配置的扩展词典到主词库表
-	 */
-	private void loadExtDict(){
-		//加载扩展词典配置
-		List<String> extDictFiles  = configuration.getExtDictionarys();
-		if(extDictFiles != null){
-			InputStream is = null;
-			for(String extDictName : extDictFiles){
-				//读取扩展词典文件
-                logger.info("[Dict Loading]" + extDictName);
-                File file=new File(configuration.getDictRoot(), extDictName);
-                try {
-                    is = new FileInputStream(file);
-                } catch (FileNotFoundException e) {
-                    logger.error("ik-analyzer",e);
-                }
+        Character keyChar = new Character(charArray[begin]);
+        DictSegment ds = null;
 
-				//如果找不到扩展的字典，则忽略
-				if(is == null){
-					continue;
-				}
-				try {
-					BufferedReader br = new BufferedReader(new InputStreamReader(is , "UTF-8"), 512);
-					String theWord = null;
-					do {
-						theWord = br.readLine();
-                        if (theWord != null && !"".equals(theWord.trim())) {
-							//加载扩展词典数据到主内存词典中
-							_MainDict.fillSegment(theWord.trim().toCharArray());
-						}
-					} while (theWord != null);
-					
-				} catch (IOException e) {
-                    logger.error("ik-analyzer",e);
-                }finally{
-					try {
-						if(is != null){
-		                    is.close();
-		                    is = null;
-						}
-					} catch (IOException e) {
-                        logger.error("ik-analyzer",e);
-                    }
-				}
-			}
-		}		
-	}
-	
-	
-	/**
-	 * 加载远程扩展词典到主词库表
-	 */
-	private void loadRemoteExtDict(){
-		List<String> remoteExtDictFiles  = configuration.getRemoteExtDictionarys();
-		for(String location:remoteExtDictFiles){
-			logger.info("[Dict Loading]" + location);
-			List<String> lists = getRemoteWords(location);
-			//如果找不到扩展的字典，则忽略
-			if(lists == null){
-				logger.error("[Dict Loading]"+location+"加载失败");
-				continue;
-			}
-			for(String theWord:lists){
-				if (theWord != null && !"".equals(theWord.trim())) {
-					//加载扩展词典数据到主内存词典中
-					logger.info(theWord);
-					_MainDict.fillSegment(theWord.trim().toLowerCase().toCharArray());
-				}
-			}
-		}
-		
-	}
-	
-	/**
-	 * 从远程服务器上下载自定义词条
-	 */
-	private static List<String> getRemoteWords(String location){
-		
-		List<String> buffer = new ArrayList<String>();
-		RequestConfig rc = RequestConfig.custom().setConnectionRequestTimeout(10*1000)
-				.setConnectTimeout(10*1000).setSocketTimeout(60*1000).build();
-		CloseableHttpClient httpclient = HttpClients.createDefault();
-		CloseableHttpResponse response;
-		BufferedReader in;
-		HttpGet get = new HttpGet(location);
-		get.setConfig(rc);
-		try {
-			response = httpclient.execute(get);
-			if(response.getStatusLine().getStatusCode()==200){
-				
-				String charset = "UTF-8";
-				//获取编码，默认为utf-8
-				if(response.getEntity().getContentType().getValue().contains("charset=")){
-					String contentType=response.getEntity().getContentType().getValue();
-					charset=contentType.substring(contentType.lastIndexOf("=")+1);
-				}
-				in = new BufferedReader(new InputStreamReader(response.getEntity().getContent(),charset));
-				String line ;
-				while((line = in.readLine())!=null){
-					buffer.add(line);
-				}
-				in.close();
-				response.close();
-				return buffer;
-			}
-			response.close();
-		} catch (ClientProtocolException e) {
-			e.printStackTrace();
-		} catch (IllegalStateException e) {
-			e.printStackTrace();
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		return buffer;
-	}
-	
-	
-	
-	/**
-	 * 加载用户扩展的停止词词典
-	 */
-	private void loadStopWordDict(){
-		//建立主词典实例
-        _StopWords = new DictSegment((char)0);
+        //引用实例变量为本地变量，避免查询时遇到更新的同步问题
+        DictSegment[] segmentArray = this.childrenArray;
+        Map<Character , DictSegment> segmentMap = this.childrenMap;
 
-        //读取主词典文件
-        File file= new File(configuration.getDictRoot(), Dictionary.PATH_DIC_STOP);
+        //STEP1 在节点中查找keyChar对应的DictSegment
+        if(segmentArray != null){
+            //在数组中查找
+            DictSegment keySegment = new DictSegment(keyChar);
+            int position = Arrays.binarySearch(segmentArray, 0 , this.storeSize , keySegment);
+            if(position >= 0){
+                ds = segmentArray[position];
+            }
 
-        InputStream is = null;
-        try {
-            is = new FileInputStream(file);
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
+        }else if(segmentMap != null){
+            //在map中查找
+            ds = (DictSegment)segmentMap.get(keyChar);
         }
 
-        try {
-            BufferedReader br = new BufferedReader(new InputStreamReader(is , "UTF-8"), 512);
-            String theWord = null;
-            do {
-                theWord = br.readLine();
-                if (theWord != null && !"".equals(theWord.trim())) {
-                    _StopWords.fillSegment(theWord.trim().toCharArray());
-                }
-            } while (theWord != null);
+        //STEP2 找到DictSegment，判断词的匹配状态，是否继续递归，还是返回结果
+        if(ds != null){
+            if(length > 1){
+                //词未匹配完，继续往下搜索
+                return ds.match(charArray, begin + 1 , length - 1 , searchHit);
+            }else if (length == 1){
 
-        } catch (IOException e) {
-            logger.error("ik-analyzer",e);
-
-        }finally{
-            try {
-                if(is != null){
-                    is.close();
-                    is = null;
+                //搜索最后一个char
+                if(ds.nodeState == 1){
+                    //添加HIT状态为完全匹配
+                    searchHit.setMatch();
                 }
-            } catch (IOException e) {
-                logger.error("ik-analyzer",e);
+                if(ds.hasNextNode()){
+                    //添加HIT状态为前缀匹配
+                    searchHit.setPrefix();
+                    //记录当前位置的DictSegment
+                    searchHit.setMatchedDictSegment(ds);
+                }
+                return searchHit;
+            }
+
+        }
+        //STEP3 没有找到DictSegment， 将HIT设置为不匹配
+        return searchHit;
+    }
+
+    /**
+     * 加载填充词典片段
+     * @param charArray
+     */
+    void fillSegment(char[] charArray){
+        this.fillSegment(charArray, 0 , charArray.length , 1);
+    }
+
+    /**
+     * 屏蔽词典中的一个词
+     * @param charArray
+     */
+    void disableSegment(char[] charArray){
+        this.fillSegment(charArray, 0 , charArray.length , 0);
+    }
+
+    /**
+     * 加载填充词典片段
+     * @param charArray
+     * @param begin
+     * @param length
+     * @param enabled
+     */
+    private synchronized void fillSegment(char[] charArray , int begin , int length , int enabled){
+        //获取字典表中的汉字对象
+        Character beginChar = new Character(charArray[begin]);
+        Character keyChar = charMap.get(beginChar);
+        //字典中没有该字，则将其添加入字典
+        if(keyChar == null){
+            charMap.put(beginChar, beginChar);
+            keyChar = beginChar;
+        }
+
+        //搜索当前节点的存储，查询对应keyChar的keyChar，如果没有则创建
+        DictSegment ds = lookforSegment(keyChar , enabled);
+        if(ds != null){
+            //处理keyChar对应的segment
+            if(length > 1){
+                //词元还没有完全加入词典树
+                ds.fillSegment(charArray, begin + 1, length - 1 , enabled);
+            }else if (length == 1){
+                //已经是词元的最后一个char,设置当前节点状态为enabled，
+                //enabled=1表明一个完整的词，enabled=0表示从词典中屏蔽当前词
+                ds.nodeState = enabled;
             }
         }
 
+    }
 
-		//加载扩展停止词典
-		List<String> extStopWordDictFiles  = configuration.getExtStopWordDictionarys();
-		if(extStopWordDictFiles != null){
-			is = null;
-			for(String extStopWordDictName : extStopWordDictFiles){
-                logger.info("[Dict Loading]" + extStopWordDictName);
+    /**
+     * 查找本节点下对应的keyChar的segment  *
+     * @param keyChar
+     * @param create  =1如果没有找到，则创建新的segment ; =0如果没有找到，不创建，返回null
+     * @return
+     */
+    private DictSegment lookforSegment(Character keyChar ,  int create){
 
-                //读取扩展词典文件
-                file=new File(configuration.getDictRoot(), extStopWordDictName);
-                try {
-                    is = new FileInputStream(file);
-                } catch (FileNotFoundException e) {
-                    logger.error("ik-analyzer",e);
+        DictSegment ds = null;
+
+        if(this.storeSize <= ARRAY_LENGTH_LIMIT){
+            //获取数组容器，如果数组未创建则创建数组
+            DictSegment[] segmentArray = getChildrenArray();
+            //搜寻数组
+            DictSegment keySegment = new DictSegment(keyChar);
+            int position = Arrays.binarySearch(segmentArray, 0 , this.storeSize, keySegment);
+            if(position >= 0){
+                ds = segmentArray[position];
+            }
+
+            //遍历数组后没有找到对应的segment
+            if(ds == null && create == 1){
+                ds = keySegment;
+                if(this.storeSize < ARRAY_LENGTH_LIMIT){
+                    //数组容量未满，使用数组存储
+                    segmentArray[this.storeSize] = ds;
+                    //segment数目+1
+                    this.storeSize++;
+                    Arrays.sort(segmentArray , 0 , this.storeSize);
+
+                }else{
+                    //数组容量已满，切换Map存储
+                    //获取Map容器，如果Map未创建,则创建Map
+                    Map<Character , DictSegment> segmentMap = getChildrenMap();
+                    //将数组中的segment迁移到Map中
+                    migrate(segmentArray ,  segmentMap);
+                    //存储新的segment
+                    segmentMap.put(keyChar, ds);
+                    //segment数目+1 ，  必须在释放数组前执行storeSize++ ， 确保极端情况下，不会取到空的数组
+                    this.storeSize++;
+                    //释放当前的数组引用
+                    this.childrenArray = null;
                 }
-				//如果找不到扩展的字典，则忽略
-				if(is == null){
-					continue;
-				}
-				try {
-					BufferedReader br = new BufferedReader(new InputStreamReader(is , "UTF-8"), 512);
-					String theWord = null;
-					do {
-						theWord = br.readLine();
-						if (theWord != null && !"".equals(theWord.trim())) {
-							//加载扩展停止词典数据到内存中
-                            _StopWords.fillSegment(theWord.trim().toCharArray());
-						}
-					} while (theWord != null);
-					
-				} catch (IOException e) {
-                    logger.error("ik-analyzer",e);
-					
-				}finally{
-					try {
-						if(is != null){
-		                    is.close();
-		                    is = null;
-						}
-					} catch (IOException e) {
-                        logger.error("ik-analyzer",e);
-					}
-				}
-			}
-		}
-		
-		//加载远程停用词典
-		List<String> remoteExtStopWordDictFiles  = configuration.getRemoteExtStopWordDictionarys();
-		for(String location:remoteExtStopWordDictFiles){
-			logger.info("[Dict Loading]" + location);
-			List<String> lists = getRemoteWords(location);
-			//如果找不到扩展的字典，则忽略
-			if(lists == null){
-				logger.error("[Dict Loading]"+location+"加载失败");
-				continue;
-			}
-			for(String theWord:lists){
-				if (theWord != null && !"".equals(theWord.trim())) {
-					//加载远程词典数据到主内存中
-					logger.info(theWord);
-					_StopWords.fillSegment(theWord.trim().toLowerCase().toCharArray());
-				}
-			}
-		}
-		
-		
-	}
-	
-	/**
-	 * 加载量词词典
-	 */
-	private void loadQuantifierDict(){
-		//建立一个量词典实例
-		_QuantifierDict = new DictSegment((char)0);
-		//读取量词词典文件
-        File file=new File(configuration.getDictRoot(),Dictionary.PATH_DIC_QUANTIFIER);
-        InputStream is = null;
-        try {
-            is = new FileInputStream(file);
-        } catch (FileNotFoundException e) {
-            logger.error("ik-analyzer",e);
+
+            }
+
+        }else{
+            //获取Map容器，如果Map未创建,则创建Map
+            Map<Character , DictSegment> segmentMap = getChildrenMap();
+            //搜索Map
+            ds = (DictSegment)segmentMap.get(keyChar);
+            if(ds == null && create == 1){
+                //构造新的segment
+                ds = new DictSegment(keyChar);
+                segmentMap.put(keyChar , ds);
+                //当前节点存储segment数目+1
+                this.storeSize ++;
+            }
         }
-		try {
-			BufferedReader br = new BufferedReader(new InputStreamReader(is , "UTF-8"), 512);
-			String theWord = null;
-			do {
-				theWord = br.readLine();
-				if (theWord != null && !"".equals(theWord.trim())) {
-					_QuantifierDict.fillSegment(theWord.trim().toCharArray());
-				}
-			} while (theWord != null);
-			
-		} catch (IOException ioe) {
-			logger.error("Quantifier Dictionary loading exception.");
-			
-		}finally{
-			try {
-				if(is != null){
-                    is.close();
-                    is = null;
-				}
-			} catch (IOException e) {
-                logger.error("ik-analyzer",e);
-			}
-		}
-	}
+
+        return ds;
+    }
 
 
-    private void loadSurnameDict(){
-
-        _SurnameDict = new DictSegment((char)0);
-        File file=new File(configuration.getDictRoot(),Dictionary.PATH_DIC_SURNAME);
-        InputStream is = null;
-        try {
-            is = new FileInputStream(file);
-        } catch (FileNotFoundException e) {
-            logger.error("ik-analyzer",e);
-        }
-        if(is == null){
-            throw new RuntimeException("Surname Dictionary not found!!!");
-        }
-        try {
-            BufferedReader br = new BufferedReader(new InputStreamReader(is , "UTF-8"), 512);
-            String theWord;
-            do {
-                theWord = br.readLine();
-                if (theWord != null && !"".equals(theWord.trim())) {
-                    _SurnameDict.fillSegment(theWord.trim().toCharArray());
+    /**
+     * 获取数组容器
+     * 线程同步方法
+     */
+    private DictSegment[] getChildrenArray(){
+        if(this.childrenArray == null){
+            synchronized(this){
+                if(this.childrenArray == null){
+                    this.childrenArray = new DictSegment[ARRAY_LENGTH_LIMIT];
                 }
-            } while (theWord != null);
-        } catch (IOException e) {
-            logger.error("ik-analyzer",e);
-        }finally{
-            try {
-                if(is != null){
-                    is.close();
-                    is = null;
+            }
+        }
+        return this.childrenArray;
+    }
+
+    /**
+     * 获取Map容器
+     * 线程同步方法
+     */
+    private Map<Character , DictSegment> getChildrenMap(){
+        if(this.childrenMap == null){
+            synchronized(this){
+                if(this.childrenMap == null){
+                    this.childrenMap = new ConcurrentHashMap<Character, DictSegment>(ARRAY_LENGTH_LIMIT * 2,0.8f);
                 }
-            } catch (IOException e) {
-                logger.error("ik-analyzer",e);
+            }
+        }
+        return this.childrenMap;
+    }
+
+    /**
+     * 将数组中的segment迁移到Map中
+     * @param segmentArray
+     */
+    private void migrate(DictSegment[] segmentArray , Map<Character , DictSegment> segmentMap){
+        for(DictSegment segment : segmentArray){
+            if(segment != null){
+                segmentMap.put(segment.nodeChar, segment);
             }
         }
     }
 
-
-    private void loadSuffixDict(){
-
-        _SuffixDict = new DictSegment((char)0);
-        File file=new File(configuration.getDictRoot(),Dictionary.PATH_DIC_SUFFIX);
-        InputStream is = null;
-        try {
-            is = new FileInputStream(file);
-        } catch (FileNotFoundException e) {
-            logger.error("ik-analyzer",e);
-        }
-        if(is == null){
-            throw new RuntimeException("Suffix Dictionary not found!!!");
-        }
-        try {
-
-            BufferedReader br = new BufferedReader(new InputStreamReader(is , "UTF-8"), 512);
-            String theWord;
-            do {
-                theWord = br.readLine();
-                if (theWord != null && !"".equals(theWord.trim())) {
-                    _SuffixDict.fillSegment(theWord.trim().toCharArray());
-                }
-            } while (theWord != null);
-        } catch (IOException e) {
-            logger.error("ik-analyzer",e);
-        }finally{
-            try {
-                is.close();
-                is = null;
-            } catch (IOException e) {
-                logger.error("ik-analyzer",e);
-            }
-        }
+    /**
+     * 实现Comparable接口
+     * @param o
+     * @return int
+     */
+    public int compareTo(DictSegment o) {
+        //对当前节点存储的char进行比较
+        return this.nodeChar.compareTo(o.nodeChar);
     }
 
-
-    private void loadPrepDict(){
-
-        _PrepDict = new DictSegment((char)0);
-        File file=new File(configuration.getDictRoot(),Dictionary.PATH_DIC_PREP);
-        InputStream is = null;
-        try {
-            is = new FileInputStream(file);
-        } catch (FileNotFoundException e) {
-            logger.error("ik-analyzer",e);
-        }
-        if(is == null){
-            throw new RuntimeException("Preposition Dictionary not found!!!");
-        }
-        try {
-
-            BufferedReader br = new BufferedReader(new InputStreamReader(is , "UTF-8"), 512);
-            String theWord;
-            do {
-                theWord = br.readLine();
-                if (theWord != null && !"".equals(theWord.trim())) {
-
-                    _PrepDict.fillSegment(theWord.trim().toCharArray());
-                }
-            } while (theWord != null);
-        } catch (IOException e) {
-            logger.error("ik-analyzer",e);
-        }finally{
-            try {
-                is.close();
-                is = null;
-            } catch (IOException e) {
-                logger.error("ik-analyzer",e);
-            }
-        }
-    }
-    
-    public void reLoadMainDict(){
-    	logger.info("重新加载词典...");
-	loadMainDict();
-	loadStopWordDict();
-    }
-    
 }
